@@ -1,4 +1,4 @@
-# TickTick Assistant
+# Lang-TickTick
 
 A chatbot interface for managing TickTick tasks and projects using natural language, built with LangChain and [Dida365](https://github.com/Cyfine/TickTick-Dida365-API-Client) package.
 
