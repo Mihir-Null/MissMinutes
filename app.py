@@ -93,12 +93,19 @@ async def chat_function(message: str, history):
         }]
 
 if __name__ == "__main__":
-
+    # Get auth credentials from env
+    username = os.getenv("GRADIO_USERNAME")
+    password = os.getenv("GRADIO_PASSWORD")
+    
+    # Setup auth if credentials provided
+    auth = None
+    if username and password:
+        auth = (username, password)
+        print(f"Gradio auth enabled for user: {username}")
 
     # Create ChatInterface with custom chatbot
     demo = gr.ChatInterface(
         fn=chat_function,
-        # chatbot=chatbot,
         title="💬 TickTick Assistant",
         description="Your AI assistant for managing tasks and projects in TickTick",
         examples=["Show me my tasks", "Create a new task", "What's on my schedule?"],
@@ -114,4 +121,9 @@ if __name__ == "__main__":
     )
 
     demo.queue()
-    demo.launch(server_name="localhost", server_port=7860, show_error=True)
+    demo.launch(
+        server_name="localhost", 
+        server_port=7860, 
+        show_error=True,
+        auth=auth  # Add optional auth
+    )

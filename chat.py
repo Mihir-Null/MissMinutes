@@ -62,6 +62,7 @@ class TickTickChatbot:
         # Initialize LLM with custom base URL if provided
         base_url = os.getenv("OPENAI_API_BASE")
         api_key = os.getenv("OPENAI_API_KEY")
+        model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default if not set
         
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is not set")
@@ -69,10 +70,11 @@ class TickTickChatbot:
         self.llm = ChatOpenAI(
             temperature=0.1,
             base_url=base_url if base_url else "https://api.openai.com/v1",
-            model="gpt-4o-mini",
+            model=model,
             streaming=True,
             api_key=api_key
         )
+        print(f"Using model: {model} at {base_url}")
         
         # Configure memory
         self.memory = ConversationBufferMemory(
@@ -96,7 +98,9 @@ class TickTickChatbot:
             tools.get_active_projects,
             tools.get_closed_projects,
             tools.get_inbox_tasks,
-            tools.get_project_tasks_detailed_with_data
+            tools.get_project_tasks_detailed_with_data,
+            tools.get_all_tasks_in_active_projects,
+            tools.get_all_tasks_in_active_projects_with_data
         ]
 
         # Create a more explicit prompt that uses XML-style tags
@@ -187,7 +191,8 @@ Remember: EVERY single output must be wrapped in either <think>, <tool>, or <sum
             tools=self.tools,
             memory=self.memory,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            max_iterations=20
         )
 
     def _format_scratchpad(self, intermediate_steps):

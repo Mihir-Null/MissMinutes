@@ -51,6 +51,11 @@ pip install -r requirements.txt
 # OpenAI Configuration
 OPENAI_API_KEY=your_api_key_here
 OPENAI_API_BASE=https://api.openai.com/v1  # Optional: custom endpoint
+OPENAI_MODEL=gpt-3.5-turbo  # Optional: model selection
+
+# Gradio Auth (optional)
+GRADIO_USERNAME=your_username  # Optional: enable auth
+GRADIO_PASSWORD=your_password  # Optional: enable auth
 
 # TickTick/Dida365 Configuration
 DIDA365_CLIENT_ID=your_client_id

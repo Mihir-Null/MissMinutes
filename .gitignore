@@ -7,7 +7,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -24,9 +23,8 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
-ENV/
+# Chat history
+chat_history/
 
 # IDE
 .idea/
