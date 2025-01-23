@@ -39,19 +39,20 @@ class SimpleAgentParser(BaseOutputParser):
                 
                 return AgentAction(tool_name, tool_input, log)
             except json.JSONDecodeError:
-                # If JSON parsing fails, try the next tool call if available
                 if len(tool_matches) > 1:
-                    # Remove the failed tool call and try again
                     new_text = text[:tool_match.start()] + text[tool_match.end():]
                     return self.parse(new_text)
         
         # Second priority: Check for final summary
         summary_match = re.search(r"<summary>(.*?)</summary>", text, re.DOTALL)
         if summary_match:
-            return AgentFinish({"output": summary_match.group(1).strip()}, text)
+            # Keep the full text as output to preserve thinking
+            return AgentFinish(
+                {"output": text.strip()},  # Use full text instead of just summary
+                text
+            )
         
         # Final fallback: Return the raw text
-        # This helps with error messages and non-XML formatted responses
         return AgentFinish({"output": text.strip()}, text)
 
 class TickTickChatbot:
@@ -110,16 +111,19 @@ You have access to the following tools:
 
 {tools}
 
-Follow this exact process for EVERY request:
+Follow this exact process for EVERY request (NO EXCEPTIONS):
 
-1. THINK: First, outline your plan
+1. MANDATORY THINKING STEP:
+You MUST ALWAYS start with a thinking step, even for simple responses or greetings.
 <think>
 - What is the user asking for?
-- What steps are needed?
-- What tools will you use?
+- What is the appropriate response?
+- Do I need to use any tools?
+- What is my plan of action?
 </think>
 
-2. ACTIONS: For each step, use the appropriate tool with this format:
+2. IF TOOLS ARE NEEDED:
+Use the appropriate tool with this format:
 <tool>tool_name</tool>
 <tool_input>
 {{
@@ -128,44 +132,52 @@ Follow this exact process for EVERY request:
 }}
 </tool_input>
 
-3. THINK: After each tool response, analyze the result
+3. AFTER EACH TOOL USE:
+Always analyze the result
 <think>
-- What did you learn?
+- What did I learn?
 - Was it successful?
 - What's the next step?
 </think>
 
-4. REPEAT: Continue steps 2-3 until all needed information is gathered
-
-5. FINAL ANSWER: When you have all information, provide your response to the user in a summary tag.
-This will be shown directly to the user, so make it clear and complete.
+4. FINAL RESPONSE:
+Provide your response in a summary tag.
 <summary>
-- Results from all operations
-- Overall status
-- Recommendations or next steps
+- Clear and complete response
+- Any relevant results or status
+- Next steps if applicable
 </summary>
 
 CRITICAL RULES:
-1. NEVER output raw text without tags
-2. ALWAYS wrap your thoughts in <think> tags
-3. ALWAYS wrap your final response in <summary> tags
-4. If you need to respond to the user, even for simple greetings, use <summary> tags
+1. You MUST ALWAYS start with a <think> tag before ANY response
+2. NEVER output raw text without tags
+3. ALWAYS wrap your thoughts in <think> tags
+4. ALWAYS wrap your final response in <summary> tags
 5. There should be NO text outside of tags
-6. The internal data like id only useful for you for query but not useful to the user, do not include it in the summary. 
+6. The internal data like id only useful for you for query but not useful to the user, do not include it in the summary
 
 WRONG OUTPUTS:
-1. "Let me check that for you"  (Wrong: raw text)
-2. "<think>Checking tasks</think>
+1. "<summary>Hello!</summary>"  (Wrong: Missing thinking step)
+2. "Let me check that for you"  (Wrong: raw text)
+3. "<think>Checking tasks</think>
    I found 3 tasks"  (Wrong: mixed tagged and raw text)
-3. "Hi there!"  (Wrong: greeting without tags)
 
 CORRECT OUTPUTS:
-1. "<think>Need to check tasks</think>"
-2. "<think>Found 3 tasks, preparing response</think>
-   <summary>I found 3 tasks in your inbox</summary>"
-3. "<summary>Hi there! How can I help you today?</summary>"
+1. "<think>User has greeted me. A simple welcome response is appropriate. No tools needed.</think>
+    <summary>Hello! How can I help you today?</summary>"
 
-Remember: EVERY single output must be wrapped in either <think>, <tool>, or <summary> tags. No exceptions.
+2. "<think>User needs to check tasks. I'll need to use the get_inbox_tasks tool.</think>
+    <tool>get_inbox_tasks</tool>
+    <tool_input>
+    {{}}
+    </tool_input>
+    <think>Successfully retrieved 3 tasks. Preparing summary.</think>
+    <summary>I found 3 tasks in your inbox</summary>"
+
+Remember: 
+- EVERY interaction MUST start with a thinking step
+- EVERY output must be wrapped in either <think>, <tool>, or <summary> tags
+- NO exceptions to these rules, even for simple responses
 """),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
@@ -286,19 +298,37 @@ Remember: EVERY single output must be wrapped in either <think>, <tool>, or <sum
         try:
             async for chunk in self.agent_executor.astream({"input": message}):
                 try:
+                    # Debug: Print chunk content
+                    print("\nDEBUG: Received chunk:")
+                    print(json.dumps(chunk, indent=2, default=str))
+                    
                     # 1. Handle thinking patterns
                     if "output" in chunk:
                         output = chunk["output"]
-                        if isinstance(output, str):  # Ensure output is string
+                        if isinstance(output, str):
                             think_match = re.search(r"<think>(.*?)</think>", output, re.DOTALL)
                             if think_match:
+                                # Add status:done only if there's a summary following
+                                has_summary = "<summary>" in output
+                                metadata = {
+                                    "title": "🧠 Thinking",
+                                }
+                                if has_summary:
+                                    metadata["status"] = "done"
+                                    
                                 yield {
                                     "role": "assistant",
                                     "content": think_match.group(1).strip(),
-                                    "metadata": {"title": "🧠 Thinking"}
+                                    "metadata": metadata
                                 }
                                 if all(tag not in output for tag in ["<tool>", "<summary>"]):
                                     continue  # Skip if only thinking
+
+                    # Debug: Print if we reach summary processing
+                    print("\nDEBUG: Checking for summary")
+                    if "messages" in chunk and chunk["messages"]:
+                        message_content = chunk["messages"][0].content
+                        print(f"\nDEBUG: Message content: {message_content}")
 
                     # 2. Handle tool actions
                     if "actions" in chunk and chunk["actions"]:
