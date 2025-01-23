@@ -56,6 +56,7 @@ OPENAI_MODEL=gpt-3.5-turbo  # Optional: model selection
 # Gradio Auth (optional)
 GRADIO_USERNAME=your_username  # Optional: enable auth
 GRADIO_PASSWORD=your_password  # Optional: enable auth
+GRADIO_PORT=7860              # Optional: web interface port (default: 7860)
 
 # TickTick/Dida365 Configuration
 DIDA365_CLIENT_ID=your_client_id

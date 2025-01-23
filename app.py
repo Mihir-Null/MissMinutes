@@ -121,9 +121,14 @@ if __name__ == "__main__":
     )
 
     demo.queue()
+
+    # Near the top with other env vars
+    port = int(os.getenv("GRADIO_PORT", 7860))
+
+    # In the launch call
     demo.launch(
-        server_name="localhost", 
-        server_port=7860, 
-        show_error=True,
-        auth=auth  # Add optional auth
+        server_name="0.0.0.0",
+        server_port=port,
+        auth=(username, password) if username and password else None,
+        share=False
     )
