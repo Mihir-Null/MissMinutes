@@ -104,3 +104,18 @@ This project uses the [TickTick-Dida365-API-Client](https://github.com/Cyfine/Ti
 
 
 
+
+## Technical Notes
+
+### Custom Agent Parser
+This project implements its own agent parser instead of using LangChain's built-in OpenAI functions parser. Here's why:
+
+- LangChain's default parser relies on OpenAI's function calling API
+- Our custom parser uses a more generic XML-style format that works with any OpenAI-compatible API
+- This allows support for models like DeepSeek-v3 and others that use the OpenAI endpoint format but don't support function calling
+- The XML format provides clear structure while being model-agnostic
+
+The custom parser implementation can be found in `chat.py` under the `SimpleAgentParser` class.
+
+
+

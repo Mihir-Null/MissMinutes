@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from typing import Dict, Any
 from datetime import datetime
-from dida365 import Dida365Client, TaskCreate, TaskUpdate, TaskPriority, ProjectCreate, ProjectUpdate, ViewMode, ProjectKind, ApiError, AuthenticationError
+from dida365 import *
 
 # The docstring in tool definition is very important for the agent to work as the agent will use it to determine which tool to use
 # when you add your  own tools, please write the doc string as detailed and comprehensive as possible.
@@ -326,8 +326,8 @@ async def get_project_tasks_detailed_with_data(project_id: str) -> str:
         priority_map = {
             0: "None",
             1: "Low",
-            3: "Medium",
-            5: "High"
+            2: "Medium",
+            3: "High"
         }
         
         task_details = []
@@ -366,6 +366,135 @@ async def get_project_tasks_detailed_with_data(project_id: str) -> str:
         )
     except Exception as e:
         return format_tool_error(e, "get_project_tasks_detailed_with_data")
+
+@tool
+async def get_all_tasks_in_active_projects() -> str:
+    """Get a list of all tasks (title only) from all active projects.
+    
+    Returns:
+        A formatted list of tasks grouped by project
+        If there's an error, returns an XML-formatted error message.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        
+        # Get all active projects first
+        projects = await client.get_projects()
+        active_projects = [p for p in projects if not p.closed]
+        
+        if not active_projects:
+            return "No active projects found"
+            
+        # Get tasks for each active project
+        all_tasks = []
+        for project in active_projects:
+            project_data: ProjectData = await client.get_project_with_data(project.id)
+            if project_data.tasks:
+                all_tasks.append({
+                    "project_name": project.name,
+                    "tasks": project_data.tasks
+                })
+        
+        if not all_tasks:
+            return "No tasks found in any active projects"
+            
+        # Format the output
+        output_lines = []
+        for project in all_tasks:
+            output_lines.append(f"\nProject: {project['project_name']}")
+            for task in project['tasks']:
+                status = "✓" if task.status == TaskStatus.COMPLETED else "○"
+                output_lines.append(f"  {status} {task.title}")
+                
+        return "Found tasks in active projects:\n" + "\n".join(output_lines)
+        
+    except Exception as e:
+        return format_tool_error(e, "get_all_tasks_in_active_projects")
+
+@tool
+async def get_all_tasks_in_active_projects_with_data() -> str:
+    """Get detailed information about all tasks from all active projects.
+    Similar to get_project_tasks_detailed_with_data but for all active projects at once.
+    
+    Returns:
+        Detailed list of tasks including title, priority, dates, content, and subtasks, grouped by project
+        If there's an error, returns an XML-formatted error message.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        
+        # Get all active projects with their data
+        projects = await client.get_projects()
+        active_projects = [p for p in projects if not p.closed]
+        
+        if not active_projects:
+            return "No active projects found"
+            
+        priority_map = {
+            0: "None",
+            1: "Low",
+            2: "Medium",
+            3: "High"
+        }
+        
+        # Get detailed data for each project
+        output_sections = []
+        total_tasks = 0
+        
+        for project in active_projects:
+            project_data = await client.get_project_with_data(project.id)
+            tasks = project_data.tasks
+            
+            if tasks:
+                total_tasks += len(tasks)
+                task_details = []
+                
+                for task in tasks:
+                    # Format dates
+                    start_date = task.start_date.strftime("%Y-%m-%d %H:%M") if task.start_date else "Not set"
+                    due_date = task.due_date.strftime("%Y-%m-%d %H:%M") if task.due_date else "Not set"
+                    
+                    # Build subtasks list
+                    subtasks = []
+                    if task.items:
+                        for item in task.items:
+                            status = "✓" if item.status == 1 else "○"
+                            subtasks.append(f"  {status} {item.title}")
+                    
+                    # Build task details
+                    details = [
+                        f"Task: {task.title}",
+                        f"Priority: {priority_map.get(task.priority, 'Unknown')}",
+                        f"Status: {'Completed' if task.status == 2 else 'Active'}",
+                        f"Start Date: {start_date}",
+                        f"Due Date: {due_date}",
+                        f"Content: {task.content or 'No content'}"
+                    ]
+                    
+                    if subtasks:
+                        details.append("Subtasks:")
+                        details.extend(subtasks)
+                        
+                    task_details.append("\n".join(details))
+                
+                # Add project section
+                output_sections.append(
+                    f"\nProject: {project.name}\n"
+                    + "\n\n".join(task_details)
+                )
+        
+        if not total_tasks:
+            return "No tasks found in any active projects"
+            
+        return (
+            f"Found {total_tasks} tasks across {len(active_projects)} active projects:\n"
+            + "\n".join(output_sections)
+        )
+        
+    except Exception as e:
+        return format_tool_error(e, "get_all_tasks_in_active_projects_with_data")
 
 @tool
 async def create_project(
@@ -603,5 +732,4 @@ async def get_inbox_tasks() -> str:
         return format_tool_error(e, "get_inbox_tasks")
     
     
-    
-    
+
