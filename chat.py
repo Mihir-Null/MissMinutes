@@ -313,7 +313,7 @@ Remember: EVERY single output must be wrapped in either <think>, <tool>, or <sum
                                     yield {
                                         "role": "assistant",
                                         "content": think_match.group(1).strip(),
-                                        "metadata": {"title": "🧠 Thinking"}
+                                        "metadata": {"title": "🧠 Thinking", "status": "done"}
                                     }
 
                             # Format tool usage
@@ -322,7 +322,7 @@ Remember: EVERY single output must be wrapped in either <think>, <tool>, or <sum
                                 yield {
                                     "role": "assistant",
                                     "content": f"Using {action.tool}\nInput: {json.dumps(tool_input, indent=2)}",
-                                    "metadata": {"title": "🔧 Tool"}
+                                    "metadata": {"title": "🔧 Tool", "status": "done"}
                                 }
 
                     # 3. Handle tool results
@@ -332,7 +332,7 @@ Remember: EVERY single output must be wrapped in either <think>, <tool>, or <sum
                                 yield {
                                     "role": "assistant",
                                     "content": str(step.observation),
-                                    "metadata": {"title": "📝 Result"}
+                                    "metadata": {"title": "📝 Result", "status": "done"}
                                 }
 
                     # 4. Handle final response
