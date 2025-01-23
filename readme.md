@@ -2,6 +2,18 @@
 
 A chatbot interface for managing TickTick tasks and projects using natural language, built with LangChain and [Dida365](https://github.com/Cyfine/TickTick-Dida365-API-Client) package.
 
+
+
+## Demo
+
+The assistant can help you manage tasks and projects with natural language:
+<p align="center">
+  <img src="img/interface.png" alt="Interface" width="600" />
+</p>
+<p align="center">
+  <img src="img/result.png" alt="Result" width="600" />
+</p>
+
 ## Prerequisites
 
 - Python 3.8+
