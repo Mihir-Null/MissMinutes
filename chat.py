@@ -9,6 +9,7 @@ import json
 import re
 import tools
 import os
+from dotenv import load_dotenv
 
 class SimpleAgentParser(BaseOutputParser):
     def parse(self, text: str):
@@ -55,13 +56,22 @@ class SimpleAgentParser(BaseOutputParser):
 
 class TickTickChatbot:
     def __init__(self):
+        # Load environment variables
+        load_dotenv()
+        
         # Initialize LLM with custom base URL if provided
         base_url = os.getenv("OPENAI_API_BASE")
+        api_key = os.getenv("OPENAI_API_KEY")
+        
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+            
         self.llm = ChatOpenAI(
             temperature=0.1,
             base_url=base_url if base_url else "https://api.openai.com/v1",
             model="gpt-4o-mini",
-            streaming=True
+            streaming=True,
+            api_key=api_key
         )
         
         # Configure memory
@@ -131,63 +141,28 @@ This will be shown directly to the user, so make it clear and complete.
 - Recommendations or next steps
 </summary>
 
-IMPORTANT: The <summary> tag content is your FINAL ANSWER to the user. Everything outside the summary tag is your internal thought process and won't be shown to the user.
+CRITICAL RULES:
+1. NEVER output raw text without tags
+2. ALWAYS wrap your thoughts in <think> tags
+3. ALWAYS wrap your final response in <summary> tags
+4. If you need to respond to the user, even for simple greetings, use <summary> tags
+5. There should be NO text outside of tags
+6. The internal data like id only useful for you for query but not useful to the user, do not include it in the summary. 
 
-Example of good execution:
-User: "Check tasks in Project A and B"
+WRONG OUTPUTS:
+1. "Let me check that for you"  (Wrong: raw text)
+2. "<think>Checking tasks</think>
+   I found 3 tasks"  (Wrong: mixed tagged and raw text)
+3. "Hi there!"  (Wrong: greeting without tags)
 
-<think>
-- Need to check tasks in two projects
-- Will use get_project_tasks for each
-- Will compile results into summary
-</think>
+CORRECT OUTPUTS:
+1. "<think>Need to check tasks</think>"
+2. "<think>Found 3 tasks, preparing response</think>
+   <summary>I found 3 tasks in your inbox</summary>"
+3. "<summary>Hi there! How can I help you today?</summary>"
 
-<tool>get_project_tasks</tool>
-<tool_input>
-{{
-    "project_id": "A"
-}}
-</tool_input>
-
-<think>
-- Project A has 2 tasks
-- Both are high priority
-- Need to check Project B next
-</think>
-
-<tool>get_project_tasks</tool>
-<tool_input>
-{{
-    "project_id": "B"
-}}
-</tool_input>
-
-<think>
-- Project B has no tasks
-- All information gathered
-- Ready to provide final answer to user
-</think>
-
-<summary>
-Here's what I found in your projects:
-
-Project A:
-- 2 high-priority tasks:
-  1. Website Update (Due: Tomorrow)
-  2. Email Campaign (Due: Friday)
-
-Project B:
-- No tasks currently assigned
-
-Recommendation: Focus on the Website Update task due tomorrow, and consider assigning some tasks to Project B to keep it active.
-</summary>
-
-Remember:
-- ALWAYS follow this structured process
-- Everything outside <summary> tags is your internal thought process
-- Only content inside <summary> tags will be shown to the user
-- Make your final answer clear and actionable
-- Maintain context from chat history"""),
+Remember: EVERY single output must be wrapped in either <think>, <tool>, or <summary> tags. No exceptions.
+"""),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad")
@@ -300,3 +275,91 @@ Remember:
             return f"Memory loaded from {file_path}"
         except Exception as e:
             return f"Error loading memory: {str(e)}"
+
+    async def chat_with_metadata(self, message: str):
+        """Process a user message and yield responses with metadata in real-time"""
+        try:
+            async for chunk in self.agent_executor.astream({"input": message}):
+                try:
+                    # 1. Handle thinking patterns
+                    if "output" in chunk:
+                        output = chunk["output"]
+                        if isinstance(output, str):  # Ensure output is string
+                            think_match = re.search(r"<think>(.*?)</think>", output, re.DOTALL)
+                            if think_match:
+                                yield {
+                                    "role": "assistant",
+                                    "content": think_match.group(1).strip(),
+                                    "metadata": {"title": "🧠 Thinking"}
+                                }
+                                if all(tag not in output for tag in ["<tool>", "<summary>"]):
+                                    continue  # Skip if only thinking
+
+                    # 2. Handle tool actions
+                    if "actions" in chunk and chunk["actions"]:
+                        for action in chunk["actions"]:
+                            if not hasattr(action, 'log') or not hasattr(action, 'tool'):
+                                continue  # Skip invalid actions
+                                
+                            # Extract thinking from action
+                            if action.log:
+                                think_match = re.search(r"<think>(.*?)</think>", action.log, re.DOTALL)
+                                if think_match:
+                                    yield {
+                                        "role": "assistant",
+                                        "content": think_match.group(1).strip(),
+                                        "metadata": {"title": "🧠 Thinking"}
+                                    }
+
+                            # Format tool usage
+                            tool_input = getattr(action, 'tool_input', {})
+                            if isinstance(tool_input, (dict, str)):
+                                yield {
+                                    "role": "assistant",
+                                    "content": f"Using {action.tool}\nInput: {json.dumps(tool_input, indent=2)}",
+                                    "metadata": {"title": "🔧 Tool"}
+                                }
+
+                    # 3. Handle tool results
+                    if "steps" in chunk and chunk["steps"]:
+                        for step in chunk["steps"]:
+                            if hasattr(step, 'observation') and step.observation:
+                                yield {
+                                    "role": "assistant",
+                                    "content": str(step.observation),
+                                    "metadata": {"title": "📝 Result"}
+                                }
+
+                    # 4. Handle final response
+                    if "output" in chunk and "messages" in chunk and chunk["messages"]:
+                        message_content = chunk["messages"][0].content if chunk["messages"] else ""
+                        if message_content:
+                            summary_match = re.search(r"<summary>(.*?)</summary>", message_content, re.DOTALL)
+                            if summary_match:
+                                yield {
+                                    "role": "assistant",
+                                    "content": summary_match.group(1).strip(),
+                                    "metadata": {"title": "💬 Response"}
+                                }
+                            elif chunk["output"] and not any(tag in chunk["output"] for tag in ["<think>", "<tool>"]):
+                                # Only yield raw output if it's not thinking or tool usage
+                                yield {
+                                    "role": "assistant",
+                                    "content": str(chunk["output"]),
+                                    "metadata": {"title": "💬 Response"}
+                                }
+
+                except Exception as chunk_error:
+                    print(f"Error processing chunk: {chunk_error}")
+                    continue  # Skip problematic chunk but continue processing
+                
+        except Exception as e:
+            print(f"\nError in chat: {str(e)}")
+            print(f"Error type: {type(e)}")
+            import traceback
+            traceback.print_exc()
+            yield {
+                "role": "assistant",
+                "content": f"Error processing your request: {str(e)}",
+                "metadata": {"title": "❌ Error"}
+            }
