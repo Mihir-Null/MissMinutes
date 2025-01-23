@@ -251,6 +251,7 @@ async def update_task(
             update_dict["items"] = items
 
         task = await client.update_task(TaskUpdate(**update_dict))
+        
         return f"Updated task '{task.title}' with ID: {task.id} in project (project_id): {task.project_id}"
     except Exception as e:
         return format_tool_error(e, "update_task")
@@ -644,7 +645,10 @@ async def update_project(
             update_dict["kind"] = ProjectKind(kind)
 
         project = await client.update_project(ProjectUpdate(**update_dict))
-        return f"Updated project '{project.name}' with ID: {project.id}"
+        if project is not None:
+            return f"Updated project '{project.name}' with ID: {project.id}"
+        else:
+            return "Failed to update project, check parameters correctness"
     except Exception as e:
         return format_tool_error(e, "update_project")
 
