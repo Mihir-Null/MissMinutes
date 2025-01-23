@@ -83,6 +83,7 @@ http://localhost:7860
 - Project organization and task management
 - Web-based chat interface using Gradio
 - Conversation memory and context awareness
+- Adaptive rate limiting for API stability
 
 
 ## Project Structure
@@ -116,6 +117,13 @@ This project implements its own agent parser instead of using LangChain's built-
 - The XML format provides clear structure while being model-agnostic
 
 The custom parser implementation can be found in `chat.py` under the `SimpleAgentParser` class.
+
+### Rate Limiting
+The project uses an adaptive rate limiter to avoid rate limits from TickTick API:
+- Maintains a sliding window of requests
+- Dynamically adjusts delays based on API response
+- Handles burst protection and backoff
+- Automatically recovers from rate limit errors
 
 
 

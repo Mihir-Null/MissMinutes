@@ -1,7 +1,11 @@
 from langchain_core.tools import tool
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from dida365 import *
+import asyncio  # Add at top if not already imported
+from collections import deque
+import time
+from rate_limiter import AdaptiveRateLimiter
 
 # The docstring in tool definition is very important for the agent to work as the agent will use it to determine which tool to use
 # when you add your  own tools, please write the doc string as detailed and comprehensive as possible.
@@ -9,6 +13,9 @@ from dida365 import *
 # Single client instance and inbox id cache
 _client = None
 _inbox_id = None
+
+# Global rate limiter instance
+_rate_limiter = AdaptiveRateLimiter()
 
 def get_client():
     """Get or initialize the TickTick client singleton"""
@@ -370,6 +377,7 @@ async def get_project_tasks_detailed_with_data(project_id: str) -> str:
 @tool
 async def get_all_tasks_in_active_projects() -> str:
     """Get a list of all tasks (title only) from all active projects.
+    Note: This tool makes multiple API calls with adaptive rate limiting.
     
     Returns:
         A formatted list of tasks grouped by project
@@ -379,22 +387,34 @@ async def get_all_tasks_in_active_projects() -> str:
         client = get_client()
         await ensure_client_initialized()
         
-        # Get all active projects first
+        # Get projects list
+        if not await _rate_limiter.acquire():
+            return "Rate limit exceeded, please try again later"
+        
         projects = await client.get_projects()
         active_projects = [p for p in projects if not p.closed]
         
         if not active_projects:
             return "No active projects found"
             
-        # Get tasks for each active project
+        # Get tasks for each project
         all_tasks = []
         for project in active_projects:
-            project_data: ProjectData = await client.get_project_with_data(project.id)
-            if project_data.tasks:
-                all_tasks.append({
-                    "project_name": project.name,
-                    "tasks": project_data.tasks
-                })
+            try:
+                if not await _rate_limiter.acquire():
+                    continue
+                    
+                project_data = await client.get_project_with_data(project.id)
+                if project_data.tasks:
+                    all_tasks.append({
+                        "project_name": project.name,
+                        "tasks": project_data.tasks
+                    })
+            except ApiError as e:
+                await _rate_limiter.on_error(e)
+                if "exceed_query_limit" not in str(e):
+                    raise e
+                continue
         
         if not all_tasks:
             return "No tasks found in any active projects"
@@ -416,6 +436,7 @@ async def get_all_tasks_in_active_projects() -> str:
 async def get_all_tasks_in_active_projects_with_data() -> str:
     """Get detailed information about all tasks from all active projects.
     Similar to get_project_tasks_detailed_with_data but for all active projects at once.
+    Note: This tool makes multiple API calls and has built-in rate limiting.
     
     Returns:
         Detailed list of tasks including title, priority, dates, content, and subtasks, grouped by project
@@ -425,25 +446,20 @@ async def get_all_tasks_in_active_projects_with_data() -> str:
         client = get_client()
         await ensure_client_initialized()
         
-        # Get all active projects with their data
+        # Get all active projects first
         projects = await client.get_projects()
         active_projects = [p for p in projects if not p.closed]
         
         if not active_projects:
             return "No active projects found"
             
-        priority_map = {
-            0: "None",
-            1: "Low",
-            2: "Medium",
-            3: "High"
-        }
-        
-        # Get detailed data for each project
+        # Get detailed data for each project with delay
         output_sections = []
         total_tasks = 0
         
-        for project in active_projects:
+        for i, project in enumerate(active_projects):
+            if i > 0:  # Add delay between requests
+                await asyncio.sleep(1)  # 1 second delay
             project_data = await client.get_project_with_data(project.id)
             tasks = project_data.tasks
             
@@ -466,7 +482,7 @@ async def get_all_tasks_in_active_projects_with_data() -> str:
                     # Build task details
                     details = [
                         f"Task: {task.title}",
-                        f"Priority: {priority_map.get(task.priority, 'Unknown')}",
+                        f"Priority: {task.priority}",
                         f"Status: {'Completed' if task.status == 2 else 'Active'}",
                         f"Start Date: {start_date}",
                         f"Due Date: {due_date}",

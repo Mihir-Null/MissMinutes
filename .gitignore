@@ -35,3 +35,6 @@ chat_history/
 # OS
 .DS_Store
 Thumbs.db 
+
+# Development tools
+probe_rate_limit.py
