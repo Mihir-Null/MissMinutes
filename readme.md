@@ -22,13 +22,19 @@ cd Lang-TickTick
 pip install -r requirements.txt
 ```
 
-3. Configure OAuth2 credentials:
+
+
+> **Warning**: Use Gradio version 5.13.0 and above as there is a bug in the chat interface for versions below 5.13.0.
+
+
+
+1. Configure OAuth2 credentials:
    - Visit [TickTick Developer Portal](https://developer.ticktick.com/manage)
    - Create a new app by clicking "New App"
    - Add `http://localhost:8080/callback` as OAuth redirect URL
    - Save your Client ID and Client Secret
 
-4. Create a `.env` file in the project root:
+2. Create a `.env` file in the project root:
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your_api_key_here
@@ -45,7 +51,7 @@ DIDA365_SERVICE_TYPE=ticktick  # Use 'dida365' for Chinese version
 
 1. Start the web interface:
 ```bash
-python web.py
+python app.py
 ```
 
 2. Access the interface at:
@@ -64,10 +70,10 @@ http://localhost:7860
 
 ## Project Structure
 
-- `web.py`: Gradio web interface
+- `app.py`: Gradio web interface and chat management
 - `chat.py`: Core chatbot logic using LangChain
 - `tools.py`: Tools for AI agents to use build upon dida365 package
-- `config.py`: Environment configuration
+
 
 
 
