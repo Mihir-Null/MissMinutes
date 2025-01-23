@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 import os
 from pathlib import Path
 import asyncio
+import dotenv
 
 
 class ChatManager:
@@ -121,10 +122,15 @@ if __name__ == "__main__":
     )
 
     demo.queue()
+    
+    # Load environment variables from .env file
+    dotenv.load_dotenv()
 
     # Near the top with other env vars
-    port = int(os.getenv("GRADIO_PORT", 7860))
-
+    # Get port from environment variable or use default 7860
+    port = int(os.getenv('GRADIO_PORT', 7860))
+    print(f"GRADIO_PORT: {os.getenv('GRADIO_PORT')}")
+    print(f"Launching on port: {port}")
     # In the launch call
     demo.launch(
         server_name="0.0.0.0",
