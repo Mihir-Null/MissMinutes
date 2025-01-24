@@ -153,8 +153,7 @@ This issue occurs in dida365 0.1.6 where service_type is not properly loaded fro
 ### Environment Variables
 
 After modifying `.env` file, you need to:
-1. Start a new terminal session, or
-2. Restart your IDE
+1. Start a new terminal session
 
 This is because environment variables are loaded when the terminal/IDE session starts. Changes to `.env` won't affect existing sessions.
 
