@@ -137,7 +137,7 @@ If you're getting redirected to dida365.com instead of ticktick.com:
 pip install dida365>=0.1.7
 ```
 
-1. Option 2: Manually set service type in tools.py
+2. Option 2: Manually set service type in tools.py
 ```python
 def get_client():
     """Get or initialize the TickTick client singleton"""
