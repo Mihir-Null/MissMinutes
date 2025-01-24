@@ -137,7 +137,7 @@ If you're getting redirected to dida365.com instead of ticktick.com:
 
 1. Option 1: Update dida365 package
 ```bash
-pip install dida365>=0.1.7
+pip install dida365>=0.1.8
 ```
 
 2. Option 2: Manually set service type in tools.py
