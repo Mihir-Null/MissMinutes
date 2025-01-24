@@ -53,16 +53,19 @@ OPENAI_API_KEY=your_api_key_here
 OPENAI_API_BASE=https://api.openai.com/v1  # Optional: custom endpoint
 OPENAI_MODEL=gpt-3.5-turbo  # Optional: model selection
 
-# Gradio Auth (optional)
-GRADIO_USERNAME=your_username  # Optional: enable auth
-GRADIO_PASSWORD=your_password  # Optional: enable auth
-GRADIO_PORT=7860              # Optional: web interface port (default: 7860)
+
+# Gradio Auth (optional, when you want to enable auth in gradio interface)
+GRADIO_USERNAME=your_username 
+GRADIO_PASSWORD=your_password 
+GRADIO_PORT=7860              
+
 
 # TickTick/Dida365 Configuration
 DIDA365_CLIENT_ID=your_client_id
 DIDA365_CLIENT_SECRET=your_client_secret
 DIDA365_REDIRECT_URI=http://localhost:8080/callback
-DIDA365_SERVICE_TYPE=ticktick  # Use 'dida365' for Chinese version
+# Use 'dida365' for Chinese version
+DIDA365_SERVICE_TYPE=ticktick  
 ```
 
 ## Running the Application
