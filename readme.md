@@ -126,5 +126,37 @@ The project uses an adaptive rate limiter to avoid rate limits from TickTick API
 - Handles burst protection and backoff
 - Automatically recovers from rate limit errors
 
+## Troubleshooting
+
+### Authentication Issues
+
+If you're getting redirected to dida365.com instead of ticktick.com:
+
+1. Option 1: Update dida365 package
+```bash
+pip install dida365>=0.1.7
+```
+
+1. Option 2: Manually set service type in tools.py
+```python
+def get_client():
+    """Get or initialize the TickTick client singleton"""
+    global _client
+    if _client is None:
+        _client = Dida365Client(service_type=ServiceType.TICKTICK)
+          # Manually set to international version
+    return _client
+```
+
+This issue occurs in dida365 0.1.6 where service_type is not properly loaded from .env file.
+
+### Environment Variables
+
+After modifying `.env` file, you need to:
+1. Start a new terminal session, or
+2. Restart your IDE
+
+This is because environment variables are loaded when the terminal/IDE session starts. Changes to `.env` won't affect existing sessions.
+
 
 
