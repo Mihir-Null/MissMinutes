@@ -49,8 +49,7 @@ async def _login_and_get_assignments(base_url, username, password, headless=True
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=headless,
-            # Standard viewport
-            viewport={"width": 1280, "height": 720}
+            executable_path="/usr/bin/chromium"
         )
 
         page = await browser.new_page()

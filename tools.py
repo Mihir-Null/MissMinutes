@@ -794,7 +794,7 @@ async def sync_canvas() -> str:
         
         # We need to get active projects to check for duplicates and find the right list
         projects = await client.get_projects()
-        active_projects = {p.id: p for p in projects if not p.closed}
+        active_projects = {p.id: {"project": p, "tasks": []} for p in projects if not p.closed}
         
         added_count = 0
         skipped_count = 0
@@ -803,7 +803,7 @@ async def sync_canvas() -> str:
              try:
                  await _rate_limiter.acquire()
                  proj_data = await client.get_project_with_data(p_id)
-                 active_projects[p_id].tasks = proj_data.tasks
+                 active_projects[p_id]["tasks"] = proj_data.tasks
              except Exception:
                  pass
 
@@ -817,7 +817,7 @@ async def sync_canvas() -> str:
             # 2. Check for duplicates in the target project
             is_dup = False
             if target_project_id in active_projects:
-                existing_tasks = active_projects[target_project_id].tasks or []
+                existing_tasks = active_projects[target_project_id]["tasks"] or []
                 for et in existing_tasks:
                    # Check if the canvas assignment title is in the ticktick task title
                    if a['title'] in et.title:
@@ -865,13 +865,18 @@ async def sync_canvas() -> str:
                     task_dict["due_date"] = a['due_date']
                 
                 created_task = await client.create_task(TaskCreate(**task_dict))
-                # Add tags if any
-                if a['tags']:
+                # Add tags if any (including course name)
+                course_tag = a['course_name'].replace(" ", "").replace("-", "")
+                tags = a.get('tags') or []
+                if course_tag not in tags:
+                    tags.append(course_tag)
+                
+                if tags:
                     await _rate_limiter.acquire()
                     update_dict = {
                         "id": created_task.id,
                         "project_id": created_task.project_id,
-                        "tags": a['tags']
+                        "tags": tags
                     }
                     await client.update_task(TaskUpdate(**update_dict))
                 

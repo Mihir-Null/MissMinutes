@@ -10,7 +10,63 @@ import json
 import re
 import tools
 import os
+import sys
 from dotenv import load_dotenv
+
+
+class UsageTracker:
+    def __init__(self, log_file="gemini_usage.json", budget=0.80):
+        self.log_file = log_file
+        self.budget = budget
+        # Pricing for Gemini 1.5 Flash (per 1M tokens)
+        self.price_input = 0.1
+        self.price_output = 0.4
+
+    def get_current_usage(self):
+        """Returns today's total cost from the log file."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        if not os.path.exists(self.log_file):
+            return 0.0
+        try:
+            with open(self.log_file, 'r') as f:
+                data = json.load(f)
+                return data.get(today, {}).get("cost", 0.0)
+        except (json.JSONDecodeError, KeyError):
+            return 0.0
+
+    def update_usage(self, response_metadata):
+        """
+        Parses LangChain metadata and updates the log.
+        response_metadata usually looks like: 
+        {'token_usage': {'prompt_tokens': 10, 'candidates_tokens': 20, 'total_tokens': 30}}
+        """
+        usage = response_metadata.get("token_usage", {})
+        if not usage:
+            return
+
+        in_tk = usage.get("input_tokens", 0)
+        out_tk = usage.get("output_tokens", 0)
+        
+        # Using Gemini 2.0 Flash rates ($0.10 / $0.40)
+        cost = (in_tk / 1_000_000 * self.price_input) + (out_tk / 1_000_000 * self.price_output)
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        data = {}
+        if os.path.exists(self.log_file):
+            with open(self.log_file, 'r') as f:
+                data = json.load(f)
+
+        day_data = data.get(today, {"input": 0, "output": 0, "cost": 0.0})
+        day_data["input"] += in_tk
+        day_data["output"] += out_tk
+        day_data["cost"] += cost
+        data[today] = day_data
+
+        with open(self.log_file, 'w') as f:
+            json.dump(data, f, indent=4)
+        
+        print(f"💰 Usage Updated: ${day_data['cost']:.4f} / ${self.budget:.2f}")
+
 
 class SimpleAgentParser(BaseOutputParser):
     def parse(self, text: str):
@@ -60,6 +116,7 @@ class TickTickChatbot:
     def __init__(self):
         # Load environment variables
         load_dotenv()
+        self.tracker = UsageTracker(budget=0.80)
         
         # Initialize LLM
         api_key = os.getenv("GEMINI_API_KEY")
@@ -69,8 +126,8 @@ class TickTickChatbot:
         if local == "True":
             self.llm = ChatOllama(
                 model=model,
-                temperature=0.1,
-                num_ctx=8192,
+                temperature=0.2,
+                # num_ctx=16384,
                 streaming=True
             )
         else:
@@ -106,7 +163,9 @@ class TickTickChatbot:
             tools.get_inbox_tasks,
             tools.get_project_tasks_detailed_with_data,
             tools.get_all_tasks_in_active_projects,
-            tools.get_all_tasks_in_active_projects_with_data
+            tools.get_all_tasks_in_active_projects_with_data,
+            tools.get_upcoming_canvas_assignments,
+            tools.sync_canvas
         ]
 
         # Create a more explicit prompt that uses XML-style tags
@@ -116,7 +175,9 @@ You have access to the following tools:
 
 {tools}
 
-Follow this exact process for EVERY request (NO EXCEPTIONS):
+TickTick is the primary application you interact with, Canvas is only used to get coursework assignments and sync them to TickTick.
+
+Follow this process for EVERY request :
 
 1. MANDATORY THINKING STEP:
 You MUST ALWAYS start with a thinking step, even for simple responses or greetings.
@@ -142,7 +203,8 @@ Always analyze the result
 <think>
 - What did I learn?
 - Was it successful?
-- What's the next step?
+- Are any further actions required?
+- What's the next step if any are required?
 </think>
 
 4. FINAL RESPONSE:
@@ -150,7 +212,7 @@ Provide your response in a summary tag.
 <summary>
 - Clear and complete response
 - Any relevant results or status
-- Next steps if applicable
+- Next steps and suggestions if applicable
 </summary>
 
 CRITICAL RULES:
@@ -160,29 +222,6 @@ CRITICAL RULES:
 4. ALWAYS wrap your final response in <summary> tags
 5. There should be NO text outside of tags
 6. The internal data like id only useful for you for query but not useful to the user, do not include it in the summary
-
-WRONG OUTPUTS:
-1. "<summary>Hello!</summary>"  (Wrong: Missing thinking step)
-2. "Let me check that for you"  (Wrong: raw text)
-3. "<think>Checking tasks</think>
-   I found 3 tasks"  (Wrong: mixed tagged and raw text)
-
-CORRECT OUTPUTS:
-1. "<think>User has greeted me. A simple welcome response is appropriate. No tools needed.</think>
-    <summary>Hello! How can I help you today?</summary>"
-
-2. "<think>User needs to check tasks. I'll need to use the get_inbox_tasks tool.</think>
-    <tool>get_inbox_tasks</tool>
-    <tool_input>
-    {{}}
-    </tool_input>
-    <think>Successfully retrieved 3 tasks. Preparing summary.</think>
-    <summary>I found 3 tasks in your inbox</summary>"
-
-Remember: 
-- EVERY interaction MUST start with a thinking step
-- EVERY output must be wrapped in either <think>, <tool>, or <summary> tags
-- NO exceptions to these rules, even for simple responses
 """),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
@@ -211,6 +250,10 @@ Remember:
             handle_parsing_errors=True,
             max_iterations=20
         )
+    def _track_chunk_usage(self, chunk):
+        """Helper to extract token usage from astream chunks"""
+        if "response_metadata" in chunk:
+            self.tracker.update_usage(chunk["response_metadata"])
 
     def _format_scratchpad(self, intermediate_steps):
         """Format intermediate steps into a list of messages."""
@@ -230,7 +273,12 @@ Remember:
 
     async def chat(self, message: str) -> str:
         """Process a user message and return the complete response"""
+        if self.tracker.get_current_usage() > self.tracker.budget:
+            print("🚫 Budget exceeded. Shutting down!")
+            sys.exit()
+
         try:
+            
             # Execute the agent
             response = await self.agent_executor.ainvoke({"input": message})
             return response["output"]
@@ -243,18 +291,36 @@ Remember:
             return f"Error processing your request: {str(e)}"
 
     async def chat_stream(self, message: str):
-        """Process a user message and stream the response chunks"""
+        """Process a user message and stream the response chunks while tracking usage"""
+    
+        # 1. Pre-call budget check
+        if self.tracker.get_current_usage() > self.tracker.budget:
+            print("🚫 Budget exceeded. Shutting down!")
+            sys.exit()
+
         try:
-            # Execute the agent with streaming
+            # 2. Execute the agent with streaming
             async for chunk in self.agent_executor.astream(
                 {"input": message},
             ):
+                # 3. CAPTURE USAGE METADATA (Usually in the final chunk)
+                # In LangChain's AgentExecutor, metadata is often nested in chunk['messages'] 
+                # or in a separate 'usage_metadata' key depending on the version.
+                if "usage_metadata" in chunk:
+                    self.tracker.update_usage(chunk["usage_metadata"])
+            
+                # Special case: checking inside message chunks
+                elif "messages" in chunk:
+                    for msg in chunk["messages"]:
+                        if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+                            self.tracker.update_usage(msg.usage_metadata)
+
+                # 4. Yield the output to the UI/Console
                 if "output" in chunk:
                     yield chunk["output"]
                 
         except Exception as e:
             print(f"\nError in chat: {str(e)}")
-            print(f"Error type: {type(e)}")
             yield f"Error processing your request: {str(e)}"
 
     def reset_memory(self):
