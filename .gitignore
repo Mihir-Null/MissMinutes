@@ -38,3 +38,6 @@ Thumbs.db
 
 # Development tools
 probe_rate_limit.py
+
+# Canvas
+canvas_config.yaml

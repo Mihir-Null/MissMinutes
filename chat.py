@@ -1,10 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
-from langchain.agents import AgentExecutor
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_classic.memory import ConversationBufferMemory
+from langchain_classic.agents import AgentExecutor
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_community.chat_models import ChatOllama
 import json
 import re
 import tools
@@ -60,22 +61,26 @@ class TickTickChatbot:
         # Load environment variables
         load_dotenv()
         
-        # Initialize LLM with custom base URL if provided
-        base_url = os.getenv("OPENAI_API_BASE")
-        api_key = os.getenv("OPENAI_API_KEY")
-        model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default if not set
+        # Initialize LLM
+        api_key = os.getenv("GEMINI_API_KEY")
+        model = os.getenv("MODEL", "gemini-2.5-flash")  # Default if not set
+        local = os.getenv("LOCAL", "False")
         
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is not set")
-            
-        self.llm = ChatOpenAI(
+        if local == "True":
+            self.llm = ChatOllama(
+                model=model,
+                temperature=0.1,
+                num_ctx=8192,
+                streaming=True
+            )
+        else:
+            self.llm = ChatGoogleGenerativeAI(
             temperature=0.1,
-            base_url=base_url if base_url else "https://api.openai.com/v1",
             model=model,
             streaming=True,
-            api_key=api_key
+            google_api_key=api_key
         )
-        print(f"Using model: {model} at {base_url}")
+        print(f"Using model: {model}")
         
         # Configure memory
         self.memory = ConversationBufferMemory(

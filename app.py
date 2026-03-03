@@ -107,18 +107,16 @@ if __name__ == "__main__":
     # Create ChatInterface with custom chatbot
     demo = gr.ChatInterface(
         fn=chat_function,
-        title="💬 TickTick Assistant",
-        description="Your AI assistant for managing tasks and projects in TickTick",
+        title="💬 Miss Minutes",
+        description="Welcome to the TVA! How can I help you today?",
         examples=["Show me my tasks", "Create a new task", "What's on my schedule?"],
         submit_btn="Send",
         stop_btn=True,
         save_history=True,
-        type="messages",
         fill_height=True,
         fill_width=True,
         autoscroll=True,
         show_progress="minimal",
-        theme="default",
     )
 
     demo.queue()
