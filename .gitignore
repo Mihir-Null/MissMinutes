@@ -42,3 +42,7 @@ probe_rate_limit.py
 # Canvas
 canvas_config.yaml
 .canvas_browser_profile/
+
+# Debug
+debug_rnj.py
+debug_output.txt

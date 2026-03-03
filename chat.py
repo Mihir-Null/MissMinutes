@@ -74,7 +74,7 @@ class SimpleAgentParser(BaseOutputParser):
         Prioritizes finding tool calls, then summary, then falls back to raw text.
         """
         # First priority: Find tool calls
-        tool_pattern = r"<tool>(.*?)</tool>.*?<tool_input>\s*({.*?})\s*</tool_input>"
+        tool_pattern = r"<tool>(.*?)</tool>\s*<tool_input>\s*({.*?})\s*</tool_input>"
         tool_matches = list(re.finditer(tool_pattern, text, re.DOTALL))
         
         if tool_matches:
