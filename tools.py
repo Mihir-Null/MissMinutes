@@ -7,6 +7,9 @@ from collections import deque
 import time
 from rate_limiter import AdaptiveRateLimiter
 import canvas_sync
+import sys
+import io
+import contextlib
 
 # The docstring in tool definition is very important for the agent to work as the agent will use it to determine which tool to use
 # when you add your  own tools, please write the doc string as detailed and comprehensive as possible.
@@ -891,3 +894,160 @@ async def sync_canvas() -> str:
         return summary
     except Exception as e:
         return format_tool_error(e, "sync_canvas")
+@tool
+async def get_projects_raw() -> list:
+    """Get all projects as raw dictionaries.
+    
+    Returns:
+        List of project dictionaries containing id, name, color, closed, etc.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        projects = await client.get_projects()
+        return [p.model_dump() for p in projects]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+@tool
+async def get_tasks_raw(project_id: str) -> list:
+    """Get all tasks in a specific project as raw dictionaries.
+    
+    Args:
+        project_id: The ID of the project
+        
+    Returns:
+        List of task dictionaries containing id, title, content, priority, due_date, etc.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        if not project_id:
+            project_id = await get_inbox_id()
+        project_data = await client.get_project_with_data(project_id)
+        return [t.model_dump() for t in project_data.tasks]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+@tool
+async def update_task_raw(task_id: str, project_id: str, data: dict) -> dict:
+    """Update a task using a raw dictionary of properties.
+    
+    Args:
+        task_id: The ID of the task to update
+        project_id: The ID of the project containing the task
+        data: Dictionary of properties to update (e.g. {"title": "New Title", "priority": 5})
+        
+    Returns:
+        The updated task as a dictionary.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        
+        # Ensure ID and project_id are in the data
+        data["id"] = task_id
+        data["project_id"] = project_id
+        
+        # Convert priority if it's an int
+        if "priority" in data and isinstance(data["priority"], int):
+            priority_map = {
+                0: TaskPriority.NONE,
+                1: TaskPriority.LOW,
+                3: TaskPriority.MEDIUM,
+                5: TaskPriority.HIGH
+            }
+            data["priority"] = priority_map.get(data["priority"], TaskPriority.NONE)
+
+        # Parse dates if they are strings
+        for date_key in ["start_date", "due_date"]:
+            if date_key in data and isinstance(data[date_key], str):
+                data[date_key] = datetime.fromisoformat(data[date_key].replace('Z', '+00:00'))
+
+        task = await client.update_task(TaskUpdate(**data))
+        return task.model_dump()
+    except Exception as e:
+        return {"error": str(e)}
+
+@tool
+async def get_all_tasks_raw() -> list:
+    """Fetch all tasks from all active projects as raw dictionaries.
+    
+    Returns:
+        A flat list of all task dictionaries from all active projects.
+    """
+    try:
+        client = get_client()
+        await ensure_client_initialized()
+        
+        projects = await client.get_projects()
+        active_projects = [p for p in projects if not p.closed]
+        
+        all_tasks = []
+        for project in active_projects:
+            # We can use get_project_with_data for each project
+            # Adding a small sleep to be respectful to the API
+            await asyncio.sleep(0.5)
+            project_data = await client.get_project_with_data(project.id)
+            for task in project_data.tasks:
+                task_dict = task.model_dump()
+                task_dict["project_name"] = project.name # Inject project name for context
+                all_tasks.append(task_dict)
+                
+        return all_tasks
+    except Exception as e:
+        return [{"error": str(e)}]
+
+@tool
+async def python_repl(code: str) -> str:
+    """A Python REPL to execute small snippets of code for data processing.
+    You have access to the 'tools' module and 'asyncio'.
+    The output of the last expression or any 'print()' calls will be returned.
+    
+    Example:
+    ```python
+    import tools
+    tasks = await tools.get_all_tasks_raw()
+    print(f"Total tasks: {len(tasks)}")
+    high_priority = [t for t in tasks if t['priority'] == 5]
+    print(f"High priority: {len(high_priority)}")
+    ```
+    
+    Args:
+        code: The Python code to execute.
+    """
+    # Create the global namespace
+    import tools
+    
+    # We need to handle async code since our tools are async
+    # We'll wrap the code in an async function if it contains 'await'
+    
+    stdout = io.StringIO()
+    
+    # Check if there is 'await' in the code
+    is_async = "await" in code
+    
+    try:
+        with contextlib.redirect_stdout(stdout):
+            if is_async:
+                # Wrap in an async function
+                wrapped_code = f"async def __ex():\n" + "\n".join(f"    {line}" for line in code.splitlines()) + "\n"
+                exec_globals = {"tools": tools, "asyncio": asyncio, "datetime": datetime, "timedelta": timedelta}
+                exec(wrapped_code, exec_globals)
+                # Run the async function
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If we are already in an async context (which we probably are), 
+                    # we need to await the function.
+                    # This is tricky because python_repl is called as a tool.
+                    # We'll try to run it directly.
+                    await exec_globals["__ex"]()
+                else:
+                    loop.run_until_complete(exec_globals["__ex"]())
+            else:
+                exec(code, {"tools": tools, "asyncio": asyncio, "datetime": datetime, "timedelta": timedelta})
+        
+        result = stdout.getvalue()
+        return result if result else "Success (no output)"
+    except Exception as e:
+        return f"Error executing code: {str(e)}\n\nStdout matched so far:\n{stdout.getvalue()}"

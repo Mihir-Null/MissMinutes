@@ -187,7 +187,12 @@ class TickTickChatbot:
             tools.get_all_tasks_in_active_projects,
             tools.get_all_tasks_in_active_projects_with_data,
             tools.get_upcoming_canvas_assignments,
-            tools.sync_canvas
+            tools.sync_canvas,
+            tools.get_projects_raw,
+            tools.get_tasks_raw,
+            tools.update_task_raw,
+            tools.get_all_tasks_raw,
+            tools.python_repl
         ]
 
         # Create a more explicit prompt that uses XML-style tags
@@ -235,7 +240,8 @@ Wrap your user-facing message in summary tags.
 ### CRITICAL CONSTRAINTS:
 - NEVER output raw text without tags.
 - The user does NOT need to see internal IDs (e.g., TickTick task IDs); keep the <summary> clean.
-- If you need more information to proceed, ask for it inside the <summary> tag."""),
+- If you need more information to proceed, ask for it inside the <summary> tag.
+- **FOR COMPLEX DATA PROCESSING**: Use the `python_repl` tool to process large lists of tasks or projects. You can import `tools` and `asyncio` inside the script. This is much faster and more accurate than manual reasoning for large datasets."""),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad")
