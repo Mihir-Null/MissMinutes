@@ -213,8 +213,7 @@ Wrap your user-facing message in summary tags.
 ### CRITICAL CONSTRAINTS:
 - NEVER output raw text without tags.
 - The user does NOT need to see internal IDs (e.g., TickTick task IDs); keep the <summary> clean.
-- If you need more information to proceed, ask for it inside the <summary> tag.""")
-]),
+- If you need more information to proceed, ask for it inside the <summary> tag."""),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad")
