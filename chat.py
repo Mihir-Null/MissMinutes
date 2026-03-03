@@ -16,8 +16,12 @@ from dotenv import load_dotenv
 
 class UsageTracker:
     def __init__(self, log_file="gemini_usage.json", budget=0.80):
+        is_local = os.getenv("LOCAL", "False")
         self.log_file = log_file
-        self.budget = budget
+        if is_local:
+            self.budget = 1000000
+        else:
+            self.budget = budget
         # Pricing for Gemini 1.5 Flash (per 1M tokens)
         self.price_input = 0.1
         self.price_output = 0.4
@@ -73,32 +77,50 @@ class SimpleAgentParser(BaseOutputParser):
         """Parse the output text into agent actions or final answer.
         Prioritizes finding tool calls, then summary, then falls back to raw text.
         """
-        # First priority: Find tool calls
-        tool_pattern = r"<tool>(.*?)</tool>\s*<tool_input>\s*({.*?})\s*</tool_input>"
-        tool_matches = list(re.finditer(tool_pattern, text, re.DOTALL))
+        # First priority: Find tool calls (New RNJ-1 format)
+        tool_call_pattern = r"<tool_call>\s*({.*?})\s*</tool_call>"
+        tool_call_matches = list(re.finditer(tool_call_pattern, text, re.DOTALL))
         
-        if tool_matches:
+        if tool_call_matches:
             # Get the last tool call
-            tool_match = tool_matches[-1]
-            tool_name = tool_match.group(1).strip()
-            
+            tool_match = tool_call_matches[-1]
             try:
                 # Try to parse the JSON input, with cleanup
-                tool_input_str = re.sub(r'\s+', ' ', tool_match.group(2).strip())
-                tool_input = json.loads(tool_input_str)
+                tool_data_str = re.sub(r'\s+', ' ', tool_match.group(1).strip())
+                tool_data = json.loads(tool_data_str)
+                
+                tool_name = tool_data.get("name")
+                tool_input = tool_data.get("arguments", {})
                 
                 # Extract thinking for context if available
                 think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
                 thinking = f"\n<think>\n{think_match.group(1).strip()}\n</think>\n" if think_match else ""
                 
                 # Format the log with proper XML
-                log = f"{thinking}<tool>{tool_name}</tool>\n<tool_input>\n{json.dumps(tool_input, indent=2)}\n</tool_input>"
+                log = f"{thinking}<tool_call>\n{json.dumps(tool_data, indent=2)}\n</tool_call>"
                 
                 return AgentAction(tool_name, tool_input, log)
-            except json.JSONDecodeError:
-                if len(tool_matches) > 1:
+            except (json.JSONDecodeError, KeyError):
+                if len(tool_call_matches) > 1:
                     new_text = text[:tool_match.start()] + text[tool_match.end():]
                     return self.parse(new_text)
+
+        # Fallback priority: Find old tool calls (compatibility)
+        old_tool_pattern = r"<tool>(.*?)</tool>\s*<tool_input>\s*({.*?})\s*</tool_input>"
+        old_tool_matches = list(re.finditer(old_tool_pattern, text, re.DOTALL))
+        
+        if old_tool_matches:
+            tool_match = old_tool_matches[-1]
+            tool_name = tool_match.group(1).strip()
+            try:
+                tool_input_str = re.sub(r'\s+', ' ', tool_match.group(2).strip())
+                tool_input = json.loads(tool_input_str)
+                think_match = re.search(r"<think>(.*?)</think>", text, re.DOTALL)
+                thinking = f"\n<think>\n{think_match.group(1).strip()}\n</think>\n" if think_match else ""
+                log = f"{thinking}<tool>{tool_name}</tool>\n<tool_input>\n{json.dumps(tool_input, indent=2)}\n</tool_input>"
+                return AgentAction(tool_name, tool_input, log)
+            except json.JSONDecodeError:
+                pass
         
         # Second priority: Check for final summary
         summary_match = re.search(r"<summary>(.*?)</summary>", text, re.DOTALL)
@@ -370,12 +392,13 @@ Wrap your user-facing message in summary tags.
                         if isinstance(output, str):
                             think_match = re.search(r"<think>(.*?)</think>", output, re.DOTALL)
                             if think_match:
-                                # Add status:done only if there's a summary following
+                                # Add status:done only if there's a summary or tool call following
                                 has_summary = "<summary>" in output
+                                has_tool = any(tag in output for tag in ["<tool>", "<tool_call>"])
                                 metadata = {
                                     "title": "🧠 Thinking",
                                 }
-                                if has_summary:
+                                if has_summary or has_tool:
                                     metadata["status"] = "done"
                                     
                                 yield {
@@ -383,7 +406,7 @@ Wrap your user-facing message in summary tags.
                                     "content": think_match.group(1).strip(),
                                     "metadata": metadata
                                 }
-                                if all(tag not in output for tag in ["<tool>", "<summary>"]):
+                                if all(tag not in output for tag in ["<tool>", "<tool_call>", "<summary>"]):
                                     continue  # Skip if only thinking
 
                     # Debug: Print if we reach summary processing
@@ -438,7 +461,7 @@ Wrap your user-facing message in summary tags.
                                     "content": summary_match.group(1).strip(),
                                     "metadata": {"title": "💬 Response"}
                                 }
-                            elif chunk["output"] and not any(tag in chunk["output"] for tag in ["<think>", "<tool>"]):
+                            elif chunk["output"] and not any(tag in chunk["output"] for tag in ["<think>", "<tool>", "<tool_call>"]):
                                 # Only yield raw output if it's not thinking or tool usage
                                 yield {
                                     "role": "assistant",

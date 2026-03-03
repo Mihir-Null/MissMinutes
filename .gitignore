@@ -46,3 +46,4 @@ canvas_config.yaml
 # Debug
 debug_rnj.py
 debug_output.txt
+debug_new_format.py
