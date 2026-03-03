@@ -103,21 +103,24 @@ if __name__ == "__main__":
     if username and password:
         auth = (username, password)
         print(f"Gradio auth enabled for user: {username}")
-
-    # Create ChatInterface with custom chatbot
-    demo = gr.ChatInterface(
-        fn=chat_function,
-        title="💬 Miss Minutes",
-        description="Welcome to the TVA! How can I help you today?",
-        examples=["Show me my tasks", "Create a new task", "What's on my schedule?"],
-        submit_btn="Send",
-        stop_btn=True,
-        save_history=True,
-        fill_height=True,
-        fill_width=True,
-        autoscroll=True,
-        show_progress="minimal",
-    )
+    
+    theme = gr.Theme.from_hub("gstaff/xkcd")
+    
+    with gr.Blocks(theme=theme) as demo:
+        # Create ChatInterface with custom chatbot
+        gr.ChatInterface(
+            fn=chat_function,
+            title="💬 Miss Minutes",
+            description="Welcome back! How can I help you today?",
+            examples=["Show me my tasks", "Create a new task", "What's on my schedule?"],
+            submit_btn="Send",
+            stop_btn=True,
+            save_history=True,
+            fill_height=True,
+            fill_width=True,
+            autoscroll=True,
+            show_progress="minimal",
+        )
 
     demo.queue()
     

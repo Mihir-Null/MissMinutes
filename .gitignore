@@ -32,6 +32,9 @@ chat_history/
 *.swp
 *.swo
 
+# Agent
+.agent/
+
 # OS
 .DS_Store
 Thumbs.db 
